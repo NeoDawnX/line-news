@@ -1,9 +1,6 @@
 import { readFile, writeFile, mkdir, access } from "node:fs/promises";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import type { Article, Category } from "./sources.js";
-
-const execFileP = promisify(execFile);
 
 const ARTICLES_PATH = "debug/articles.json";
 const SYLLABUS_PATH = "prompts/syllabus.md";
@@ -49,15 +46,23 @@ async function claudeBin(): Promise<string> {
   }
 }
 
-async function ask(prompt: string): Promise<string> {
-  const bin = await claudeBin();
-  const { stdout } = await execFileP(bin, ["-p", "--output-format", "text"], {
-    input: prompt,
-    encoding: "utf8",
-    maxBuffer: 16 * 1024 * 1024,
-    timeout: CLAUDE_TIMEOUT_MS,
-  } as Parameters<typeof execFileP>[2] & { input: string });
-  return String(stdout);
+function ask(prompt: string): Promise<string> {
+  return new Promise(async (resolve, reject) => {
+    const bin = await claudeBin();
+    const child = spawn(bin, ["-p", "--output-format", "text"], { stdio: ["pipe", "pipe", "pipe"] });
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    const timer = setTimeout(() => child.kill(), CLAUDE_TIMEOUT_MS);
+    child.stdout.on("data", (d) => out.push(d));
+    child.stderr.on("data", (d) => err.push(d));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(`claude exit ${code}: ${Buffer.concat(err).toString()}`));
+      resolve(Buffer.concat(out).toString("utf8"));
+    });
+    child.stdin.end(prompt);
+  });
 }
 
 function fill(template: string, vars: Record<string, string>): string {
@@ -68,6 +73,18 @@ function parseSelection(raw: string): Selection {
   const m = raw.match(/\{[\s\S]*\}/);
   if (!m) throw new Error(`選抜JSONが見つからない:\n${raw.slice(0, 500)}`);
   return JSON.parse(m[0]) as Selection;
+}
+
+/** LLM が前後に付けたコメントを落とし、# DoctorNews から最後の出典行までを残す */
+export function trimIssue(raw: string): string {
+  const start = raw.indexOf("# DoctorNews");
+  let s = start >= 0 ? raw.slice(start) : raw;
+  const lastSrc = s.lastIndexOf("\n出典:");
+  if (lastSrc >= 0) {
+    const end = s.indexOf("\n", lastSrc + 1);
+    s = end >= 0 ? s.slice(0, end) : s;
+  }
+  return s.trim() + "\n";
 }
 
 function formatFull(a: Article): string {
@@ -118,7 +135,7 @@ async function main() {
   );
 
   await mkdir("content", { recursive: true });
-  await writeFile(outPath, body.trim() + "\n");
+  await writeFile(outPath, trimIssue(body));
   await writeFile(`debug/selection-${iso}.json`, JSON.stringify({ ...sel, concept, deepTheme }, null, 2));
   console.log(`\n→ ${outPath} (${body.length}字)`);
 }
