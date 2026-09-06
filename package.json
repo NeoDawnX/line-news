@@ -6,7 +6,10 @@
   "scripts": {
     "collect": "tsx src/collect.ts",
     "generate": "tsx src/generate.ts",
-    "broadcast": "tsx src/broadcast.ts"
+    "verify": "tsx src/verify.ts",
+    "publish": "tsx src/publish.ts",
+    "broadcast": "tsx src/broadcast.ts",
+    "daily": "npm run collect && npm run generate && npm run verify && npm run publish && npm run broadcast"
   },
   "repository": {
     "type": "git",

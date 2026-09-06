@@ -1,8 +1,13 @@
 import { readFile } from "node:fs/promises";
+import { issueMeta, issueUrl } from "./publish.js";
 
-// LINE テキストメッセージの上限は 5,000 字、1リクエスト 5 通まで。
-const MAX_TEXT = 4900;
-const MAX_MESSAGES = 5;
+/**
+ * LINE には Flex Message 1通だけ送る: 日付、今日の3本の見出し、今日の1概念、Web へのリンク。
+ * 全文は GitHub Pages で読む。
+ *   --dry        送らずに JSON を表示
+ *   --to <userId> broadcast でなく個人宛て push
+ *   YYYY-MM-DD   対象の号（省略時は今日 JST）
+ */
 
 async function loadEnv(): Promise<void> {
   try {
@@ -19,44 +24,67 @@ function jstToday(): string {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-/** Markdown を LINE 向けプレーンテキストに落とす */
-function mdToText(md: string): string {
-  return md
-    .replace(/^# .*\n/m, "")
-    .replace(/^### (.*)$/gm, "\n▎$1")
-    .replace(/^## (.*)$/gm, "■ $1")
-    .replace(/\*\*(.+?)\*\*/g, "$1")
-    .replace(/^出典: (.*)$/gm, "→ $1")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+const row = (icon: string, label: string, text: string) => ({
+  type: "box",
+  layout: "vertical",
+  margin: "lg",
+  contents: [
+    { type: "text", text: `${icon} ${label}`, size: "xs", color: "#888888" },
+    { type: "text", text, size: "sm", wrap: true },
+  ],
+});
+
+export function buildFlex(md: string) {
+  const m = issueMeta(md);
+  const url = issueUrl(m.date);
+  return {
+    type: "flex",
+    altText: `DoctorNews ${m.date}｜${m.macro}`,
+    contents: {
+      type: "bubble",
+      size: "mega",
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          { type: "text", text: "DoctorNews", weight: "bold", size: "lg" },
+          { type: "text", text: m.date, size: "xs", color: "#888888" },
+        ],
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "none",
+        contents: [
+          row("🌏", "マクロ", m.macro),
+          row("🏢", "ビジネス", m.business),
+          row("🏥", "医療", m.health),
+          { type: "separator", margin: "xl" },
+          row("📖", "今日の1概念", m.concept),
+          row("🔍", `深掘り｜${m.deepTheme}`, m.deepTitle),
+        ],
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          { type: "button", style: "primary", height: "sm", action: { type: "uri", label: "全文を読む", uri: url } },
+        ],
+      },
+    },
+  };
 }
 
-/** `## ` 見出しごとに分割して1通ずつにする */
-function splitIssue(md: string): string[] {
-  const title = md.match(/^# (.*)$/m)?.[1] ?? "DoctorNews";
-  const sections = md.split(/^(?=## )/m).filter((s) => s.startsWith("## "));
-  const msgs = sections.map((s, i) => (i === 0 ? `${title}\n\n` : "") + mdToText(s));
-  for (const m of msgs) {
-    if (m.length > MAX_TEXT) throw new Error(`1通が ${m.length} 字。上限 ${MAX_TEXT}`);
-  }
-  if (msgs.length > MAX_MESSAGES) throw new Error(`${msgs.length} 通。上限 ${MAX_MESSAGES}`);
-  return msgs;
-}
-
-async function send(messages: string[], to: string | null): Promise<void> {
+async function send(message: unknown, to: string | null): Promise<void> {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   if (!token) throw new Error("LINE_CHANNEL_ACCESS_TOKEN が未設定");
   const url = to
     ? "https://api.line.me/v2/bot/message/push"
     : "https://api.line.me/v2/bot/message/broadcast";
-  const body = {
-    ...(to ? { to } : {}),
-    messages: messages.map((text) => ({ type: "text", text })),
-  };
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...(to ? { to } : {}), messages: [message] }),
   });
   if (!res.ok) throw new Error(`LINE ${res.status}: ${await res.text()}`);
 }
@@ -70,15 +98,13 @@ async function main() {
   const date = args.find((a) => /^\d{4}-\d{2}-\d{2}$/.test(a)) ?? jstToday();
 
   const md = await readFile(`content/${date}.md`, "utf8");
-  const messages = splitIssue(md);
-  console.log(`${date}: ${messages.length}通 (${messages.map((m) => m.length).join(" / ")} 字)`);
-
+  const flex = buildFlex(md);
   if (dry) {
-    for (const [i, m] of messages.entries()) console.log(`\n===== ${i + 1}通目 =====\n${m}`);
+    console.log(JSON.stringify(flex, null, 2));
     return;
   }
-  await send(messages, to);
-  console.log(to ? `push → ${to}` : "broadcast 完了");
+  await send(flex, to);
+  console.log(to ? `push → ${to}` : `broadcast 完了: ${issueUrl(date)}`);
 }
 
 main().catch((e) => {

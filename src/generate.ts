@@ -109,8 +109,12 @@ async function main() {
   const candidates = pool
     .map((a) => `- id=${a.id} [${a.category}] ${a.source}｜${a.title}\n  ${a.body!.slice(0, PREVIEW_CHARS).replace(/\s+/g, " ")}`)
     .join("\n");
+  const headlines = all
+    .filter((a) => a.headlineOnly)
+    .map((a) => `- [${a.category}] ${a.source}｜${a.title}`)
+    .join("\n");
   const sel = parseSelection(
-    await ask(fill(await readFile(SELECT_PROMPT, "utf8"), { DEEP_THEME: deepTheme, CANDIDATES: candidates })),
+    await ask(fill(await readFile(SELECT_PROMPT, "utf8"), { DEEP_THEME: deepTheme, CANDIDATES: candidates, HEADLINES: headlines })),
   );
   const pick = (id: string, label: string): Article => {
     const a = byId.get(id);

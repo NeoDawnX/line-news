@@ -12,6 +12,8 @@ import { loadSeen, markSeen } from "./seen.js";
 
 const OUT_PATH = "debug/articles.json";
 const MAX_BODY_CHARS = 12000;
+// これ未満は本文が取れていない（リードだけ、目次だけ）とみなす
+const MIN_BODY_CHARS = 600;
 const TIMEOUT_MS = 8000;
 
 const parser = new Parser({ timeout: TIMEOUT_MS });
@@ -41,7 +43,11 @@ async function fetchT(url: string): Promise<Response> {
   }
 }
 
+// 拡張子で明らかに HTML でないものは取りに行かない（日銀の PDF/XLSX など）
+const NON_HTML = /\.(pdf|xlsx?|docx?|pptx?|csv|zip)(\?|$)/i;
+
 async function extractBody(url: string): Promise<string | null> {
+  if (NON_HTML.test(url)) return null;
   try {
     const res = await fetchT(url);
     if (!res.ok) return null;
@@ -50,7 +56,7 @@ async function extractBody(url: string): Promise<string | null> {
     const parsed = new Readability(dom.window.document).parse();
     dom.window.close();
     const text = parsed?.textContent?.replace(/\s+\n/g, "\n").trim();
-    if (!text || text.length < 400) return null;
+    if (!text || text.length < MIN_BODY_CHARS) return null;
     return text.slice(0, MAX_BODY_CHARS);
   } catch {
     return null;
@@ -76,6 +82,7 @@ async function collectRss(): Promise<Article[]> {
         out.push({
           id: hashId(it.link!),
           source: src.label,
+          headlineOnly: src.noBody || undefined,
           category: classify(title) ?? src.category,
           title,
           url: it.link!,
@@ -103,6 +110,7 @@ async function collectGoogleNews(): Promise<Article[]> {
         out.push({
           id: hashId(it.link),
           source: "Google News",
+          headlineOnly: true,
           category,
           title: (it.title ?? "").trim(),
           url: it.link,
@@ -157,13 +165,13 @@ async function collectHN(): Promise<Article[]> {
 /**
  * 本文抽出の対象をカテゴリ別クォータで選ぶ。fresh はソース順・フィード順
  * （＝新しい順）なので、前から詰めれば各カテゴリの新しいものが残る。
- * Google News は本文が取れないので対象外（タイトルのみ generate に渡す）。
+ * headlineOnly（NHK, Google News）は対象外。タイトルだけ generate に渡す。
  */
 function pickTargets(fresh: Article[]): Article[] {
   const used = new Map<Category, number>();
   const targets: Article[] = [];
   for (const a of fresh) {
-    if (a.source === "Google News") continue;
+    if (a.headlineOnly) continue;
     const n = used.get(a.category) ?? 0;
     if (n >= CATEGORY_QUOTAS[a.category]) continue;
     used.set(a.category, n + 1);

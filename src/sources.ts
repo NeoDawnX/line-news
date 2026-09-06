@@ -12,6 +12,8 @@ export interface SourceDef {
   excludeTitle?: RegExp;
   /** true なら CLASSIFIERS のどれにもマッチしない記事を捨てる（混在フィード用） */
   strict?: boolean;
+  /** true なら本文を取らない。見出し＋リードだけを「話題」として LLM に見せる */
+  noBody?: boolean;
 }
 
 export const DEFAULT_FEED_LIMIT = 20;
@@ -25,7 +27,7 @@ export const OFF_TOPIC =
 export const CLASSIFIERS: { category: Category; pattern: RegExp }[] = [
   {
     category: "health",
-    pattern: /医療|医師|病院|診療|薬|介護|感染|ワクチン|厚労|厚生労働|看護|年金|製薬|治験|臨床|健康|医学/,
+    pattern: /医療|医師|病院|診療報酬|薬価|製薬|医薬|創薬|介護|感染症|ワクチン|厚労|厚生労働|看護|年金|治験|医療費|保険料/,
   },
   {
     category: "macro",
@@ -45,26 +47,34 @@ const MHLW_NOISE =
 // 各ソースの取得件数を必ず確認してください。0件が続くソースは死んでいます。
 // NHK のカテゴリ番号は名前と一致しない（cat2=くらし, cat3=科学・文化）。
 export const RSS_SOURCES: SourceDef[] = [
+  // --- 本文が取れるソース（執筆の根拠にできる） ---
   {
-    id: "nhk-economy",
-    label: "NHK 経済",
+    id: "toyokeizai",
+    label: "東洋経済",
     category: "business",
-    url: "https://www.nhk.or.jp/rss/news/cat5.xml",
-    feedLimit: 30,
+    url: "https://toyokeizai.net/list/feed/rss",
+    excludeTitle: /子育て|レシピ|ダイエット|占い|鉄道|マンガ/,
   },
   {
-    id: "nhk-politics",
-    label: "NHK 政治",
-    category: "macro",
-    url: "https://www.nhk.or.jp/rss/news/cat4.xml",
-    strict: true,
+    id: "itmedia-biz",
+    label: "ITmedia ビジネス",
+    category: "business",
+    url: "https://rss.itmedia.co.jp/rss/2.0/business.xml",
   },
   {
-    id: "nhk-life",
-    label: "NHK くらし",
-    category: "health",
-    url: "https://www.nhk.or.jp/rss/news/cat2.xml",
+    id: "nikkei-business",
+    label: "日経ビジネス",
+    category: "business",
+    url: "https://business.nikkei.com/rss/sns/nb.rdf",
+    excludeTitle: /最新号|新聞広告|書評|読書/,
+  },
+  {
+    id: "diamond",
+    label: "ダイヤモンド",
+    category: "business",
+    url: "https://diamond.jp/list/feed/rss/dol",
     strict: true,
+    excludeTitle: /医師が警告|健康|食|ダイエット|貯金|年収|子ども|親|夫|妻|炎上|精神科医/,
   },
   {
     id: "boj",
@@ -72,7 +82,8 @@ export const RSS_SOURCES: SourceDef[] = [
     category: "macro",
     url: "https://www.boj.or.jp/rss/whatsnew.xml",
     feedLimit: 8,
-    excludeTitle: /開催について|募集|採用|入札|公表予定/,
+    // 統計・報告は表だけで本文がない。読むべきは講演・挨拶・会見の要旨
+    excludeTitle: /開催について|募集|採用|入札|公表予定|残高|当座預金|マネタリーベース|営業毎旬|見込み|統計|報告|指標|計数/,
   },
   {
     id: "mhlw",
@@ -88,6 +99,31 @@ export const RSS_SOURCES: SourceDef[] = [
     category: "tech",
     url: "https://www.publickey1.jp/atom.xml",
     feedLimit: 5,
+  },
+  // --- 見出しのみ（NHK は全文が同意壁の裏で取れない。話題検出用） ---
+  {
+    id: "nhk-economy",
+    label: "NHK 経済",
+    category: "business",
+    url: "https://www.nhk.or.jp/rss/news/cat5.xml",
+    feedLimit: 30,
+    noBody: true,
+  },
+  {
+    id: "nhk-politics",
+    label: "NHK 政治",
+    category: "macro",
+    url: "https://www.nhk.or.jp/rss/news/cat4.xml",
+    strict: true,
+    noBody: true,
+  },
+  {
+    id: "nhk-life",
+    label: "NHK くらし",
+    category: "health",
+    url: "https://www.nhk.or.jp/rss/news/cat2.xml",
+    strict: true,
+    noBody: true,
   },
 ];
 
@@ -119,6 +155,8 @@ export const CATEGORY_QUOTAS: Record<Category, number> = {
 export interface Article {
   id: string;
   source: string;
+  /** 本文を取らないソース由来。generate では話題リストとしてのみ使う */
+  headlineOnly?: boolean;
   category: Category;
   title: string;
   url: string;
