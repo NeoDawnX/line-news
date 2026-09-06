@@ -31,11 +31,11 @@ export const CLASSIFIERS: { category: Category; pattern: RegExp }[] = [
   },
   {
     category: "macro",
-    pattern: /日銀|金融政策|為替|円相場|円安|円高|金利|利上げ|利下げ|インフレ|物価|GDP|雇用統計|景気|財政|国債|関税|消費税|減税|FRB|ECB|中央銀行|貿易|経常収支|賃金|春闘|総裁|審議委員/,
+    pattern: /日銀|金融政策|為替|円相場|円安|円高|金利|利上げ|利下げ|インフレ|物価|GDP|雇用統計|景気|財政|国債|関税|消費税|減税|FRB|ECB|中央銀行|貿易|経常収支|賃金|春闘|総裁|審議委員|ECB|マーケット|経済学|株式市場|債券|ドル|ユーロ|米国経済|中国経済|景気|円建て|利回り/,
   },
   {
     category: "business",
-    pattern: /決算|買収|M&A|統合|資金調達|上場|IPO|業績|増益|減益|赤字|黒字|人員削減|リストラ|不正|株価|株主|提携|撤退|参入|値上げ|売上|経営|社長|会長|CEO/,
+    pattern: /決算|買収|M&A|統合|資金調達|上場|IPO|業績|増益|減益|赤字|黒字|人員削減|リストラ|不正|株価|株主|提携|撤退|参入|値上げ|売上|経営|社長|会長|CEO|企業|市場|産業|投資|銀行|価格|戦略|メーカー|EV|半導体|不動産|開発|出店|工場|事業|シェア|ブランド|小売|物流|商社/,
   },
 ];
 
@@ -53,7 +53,8 @@ export const RSS_SOURCES: SourceDef[] = [
     label: "東洋経済",
     category: "business",
     url: "https://toyokeizai.net/list/feed/rss",
-    excludeTitle: /子育て|レシピ|ダイエット|占い|鉄道|マンガ/,
+    strict: true,
+    excludeTitle: /子育て|レシピ|ダイエット|占い|鉄道|マンガ|漫画|歴史|家康|戦国|悪役|ツアー/,
   },
   {
     id: "itmedia-biz",
@@ -83,7 +84,8 @@ export const RSS_SOURCES: SourceDef[] = [
     url: "https://www.boj.or.jp/rss/whatsnew.xml",
     feedLimit: 8,
     // 統計・報告は表だけで本文がない。読むべきは講演・挨拶・会見の要旨
-    excludeTitle: /開催について|募集|採用|入札|公表予定|残高|当座預金|マネタリーベース|営業毎旬|見込み|統計|報告|指標|計数/,
+    // 講演・挨拶・会見だけ残す（統計 PDF は本文がない）
+    excludeTitle: /^(?!【(挨拶|講演|記者会見)】)/,
   },
   {
     id: "mhlw",

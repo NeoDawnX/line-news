@@ -171,7 +171,7 @@ function pickTargets(fresh: Article[]): Article[] {
   const used = new Map<Category, number>();
   const targets: Article[] = [];
   for (const a of fresh) {
-    if (a.headlineOnly) continue;
+    if (a.headlineOnly || NON_HTML.test(a.url)) continue;
     const n = used.get(a.category) ?? 0;
     if (n >= CATEGORY_QUOTAS[a.category]) continue;
     used.set(a.category, n + 1);
