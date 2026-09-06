@@ -17,7 +17,7 @@
 ## パイプライン
 collect (RSS/HN取得・本文抽出) → generate (claude -p 2回: 選抜→執筆)
 → verify (数値・固有名詞の原文突合) → content/YYYY-MM-DD.md
-→ broadcast (LINE Flex Message)
+→ publish (Markdown→HTML, GitHub Pages) → broadcast (LINE Flex 1通: 3本の見出し＋概念名＋Webへのリンク)
 
 実行: GitHub Actions cron 06:40 JST。LLMは `claude -p`（Maxサブスク枠）。
 
@@ -31,8 +31,8 @@ collect (RSS/HN取得・本文抽出) → generate (claude -p 2回: 選抜→執
 - [x] LINE Messaging API 疎通確認済み
 - [x] src/sources.ts, src/collect.ts, src/seen.ts
 - [x] 収集の偏り修正（2026-09-05）
-- [ ] src/generate.ts
-- [ ] src/broadcast.ts
+- [x] src/generate.ts（2026-09-05 初号生成）
+- [x] src/broadcast.ts（テキスト3通版。Flex化は未）
 - [ ] .github/workflows/daily.yml
 
 ## 収集の設計（2026-09-05 時点）
@@ -48,5 +48,12 @@ collect (RSS/HN取得・本文抽出) → generate (claude -p 2回: 選抜→執
 - 本文の中央値は約1,500字。深掘り1,500字を1記事から書くと水増しになる。
   generate では複数記事を束ねる前提にすること
 
+## 配信形式（2026-09-06 決定）
+LINE は Flex Message 1通のみ: 日付、今日の3本の見出し、今日の1概念の名前、Web へのリンク。
+全文は GitHub Pages のアーカイブで読む。LINE の5,000字制限と分割配信を避けるため。
+
 ## 次にやること
-1. generate.ts の実装（選抜→執筆。深掘りは複数記事を束ねる）
+1. verify.ts（数値・固有名詞の原文突合。NG なら配信停止）
+2. publish（content/*.md → HTML → GitHub Pages）
+3. broadcast.ts を Flex 1通に変更
+4. .github/workflows/daily.yml
