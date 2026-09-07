@@ -183,6 +183,10 @@ function pickTargets(fresh: Article[]): Article[] {
 }
 
 async function main() {
+  setTimeout(() => {
+    console.error("collect: 12分を超えたので中断");
+    process.exit(2);
+  }, 12 * 60 * 1000).unref();
   await mkdir("debug", { recursive: true });
   const seen = await loadSeen();
 
