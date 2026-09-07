@@ -49,7 +49,14 @@ async function claudeBin(): Promise<string> {
 function ask(prompt: string): Promise<string> {
   return new Promise(async (resolve, reject) => {
     const bin = await claudeBin();
-    const child = spawn(bin, ["-p", "--output-format", "text"], { stdio: ["pipe", "pipe", "pipe"] });
+    // CI で権限プロンプト待ちにならないよう、ツールを使わせず確認は自動拒否にする。
+    // 執筆にツールは不要（本文はすべてプロンプトに入っている）。
+    const args = [
+      "-p", "--output-format", "text",
+      "--permission-prompts", "none",
+      "--disallowedTools", "Write", "Edit", "NotebookEdit", "Bash", "Agent", "WebFetch", "WebSearch",
+    ];
+    const child = spawn(bin, args, { stdio: ["pipe", "pipe", "pipe"] });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     const timer = setTimeout(() => child.kill(), CLAUDE_TIMEOUT_MS);
