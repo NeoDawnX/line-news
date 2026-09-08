@@ -144,4 +144,6 @@ vite.config.ts.timestamp-*
 
 # DoctorNews
 .env
-debug/
+debug/*
+!debug/selection-*.json
+!debug/verify-*.log

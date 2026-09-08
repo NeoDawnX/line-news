@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import type { Article } from "./sources.js";
 
 /**
@@ -21,7 +21,12 @@ const HARD_UNITS = "円|ドル|ユーロ|元|％|%|億|兆|万|千|人|件|社|�
 const NUM_RE = new RegExp(`[0-9０-９][0-9０-９,，.．]*(?:${HARD_UNITS})`, "g");
 
 const toHalf = (s: string) =>
-  s.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[，]/g, ",").replace(/[．]/g, ".");
+  s
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[，]/g, ",")
+    .replace(/[．]/g, ".")
+    .replace(/％/g, "%")
+    .replace(/(\d)[\s　]+(?=[年月日%])/g, "$1");
 
 /** 数値トークンを正規化（全角→半角、桁区切り除去） */
 function numbers(text: string): string[] {
@@ -60,15 +65,20 @@ async function main() {
   const byId = new Map(all.map((a) => [a.id, a]));
 
   let bad = 0;
+  const log: string[] = [];
+  const say = (line: string) => {
+    console.log(line);
+    log.push(line);
+  };
   for (const s of sections(md, sel, byId)) {
     const corpus = s.sources.map((a) => `${a.title}\n${a.summary}\n${a.body ?? ""}`).join("\n");
     const corpusNums = new Set(numbers(corpus));
     const missing = [...new Set(numbers(s.text))].filter((n) => !corpusNums.has(n));
     if (missing.length) {
       bad += missing.length;
-      console.log(`✗ ${s.name}\n    原文にない数値: ${missing.join(", ")}`);
+      say(`✗ ${s.name}\n    原文にない数値: ${missing.join(", ")}`);
     } else {
-      console.log(`✓ ${s.name}`);
+      say(`✓ ${s.name}`);
     }
   }
 
@@ -78,10 +88,12 @@ async function main() {
   const badUrls = cited.filter((u) => !allowed.has(u));
   if (badUrls.length) {
     bad += badUrls.length;
-    console.log(`✗ 選抜記事にない出典URL: ${badUrls.join(", ")}`);
+    say(`✗ 選抜記事にない出典URL: ${badUrls.join(", ")}`);
   }
 
-  console.log(bad ? `\nNG: ${bad}件。配信を止める` : "\nOK");
+  const verdict = bad ? `NG: ${bad}件。配信を止める` : "OK";
+  console.log(`\n${verdict}`);
+  await writeFile(`debug/verify-${date}.log`, [...log, verdict].join("\n") + "\n");
   process.exit(bad ? 1 : 0);
 }
 

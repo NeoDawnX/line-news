@@ -52,12 +52,13 @@ jobs:
         timeout-minutes: 2
         run: npm run publish
 
-      - name: commit content, docs, seen
+      # 失敗しても commit する。debug/ の選抜結果と verify ログで原因を追える
+      - name: commit content, docs, seen, debug
         if: always()
         run: |
           git config user.name "doctornews-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add content docs seen.json
+          git add content docs seen.json debug/selection-*.json debug/verify-*.log 2>/dev/null || true
           git diff --cached --quiet || git commit -m "daily: $(TZ=Asia/Tokyo date +%F)"
           git push
 
