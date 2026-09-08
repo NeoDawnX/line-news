@@ -88,6 +88,20 @@ export const RSS_SOURCES: SourceDef[] = [
     excludeTitle: /^(?!【(挨拶|講演|記者会見)】)/,
   },
   {
+    id: "gemmed",
+    label: "GemMed",
+    category: "health",
+    url: "https://gemmed.ghc-j.com/?feed=rss2",
+    feedLimit: 8,
+  },
+  {
+    id: "answersnews",
+    label: "AnswersNews",
+    category: "health",
+    url: "https://answers.ten-navi.com/pharmanews/feed/",
+    feedLimit: 6,
+  },
+  {
     id: "mhlw",
     label: "厚生労働省 報道発表",
     category: "health",
