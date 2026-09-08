@@ -107,8 +107,9 @@ async function main() {
   const all = JSON.parse(await readFile(ARTICLES_PATH, "utf8")) as Article[];
   const pool = all.filter((a) => a.body);
   const byId = new Map(pool.map((a) => [a.id, a]));
+  if (!pool.length) throw new Error("本文つき候補が0件。collect を確認");
   for (const c of ["macro", "business", "health"] as Category[]) {
-    if (!pool.some((a) => a.category === c)) throw new Error(`${c} の候補が0件。collect を確認`);
+    if (!pool.some((a) => a.category === c)) console.warn(`警告: ${c} の候補が0件。内容の近い記事から選ばせる`);
   }
   console.log(`${iso} 深掘り=${deepTheme} 概念=${concept} 候補=${pool.length}件`);
 

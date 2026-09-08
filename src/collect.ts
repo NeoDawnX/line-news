@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import Parser from "rss-parser";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
+// v1 は ESM から素直に import すると自己テストを走らせて落ちるので lib を直接読む
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 import {
   RSS_SOURCES, GOOGLE_NEWS_QUERIES, googleNewsUrl, DEFAULT_FEED_LIMIT,
   CATEGORY_QUOTAS, OFF_TOPIC, CLASSIFIERS, HN_TOP_N, HN_MIN_SCORE,
@@ -43,14 +45,24 @@ async function fetchT(url: string): Promise<Response> {
   }
 }
 
-// 拡張子で明らかに HTML でないものは取りに行かない（日銀の PDF/XLSX など）
-const NON_HTML = /\.(pdf|xlsx?|docx?|pptx?|csv|zip)(\?|$)/i;
+// 表計算・アーカイブは本文がないので取りに行かない。PDF は読む（日銀の会見要旨・講演）
+const NON_HTML = /\.(xlsx?|docx?|pptx?|csv|zip)(\?|$)/i;
+const IS_PDF = /\.pdf(\?|$)/i;
+
+async function extractPdf(res: Response): Promise<string | null> {
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > 5 * 1024 * 1024) return null;
+  const { text } = await pdfParse(buf, { max: 20 });
+  const t = text.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  return t.length < MIN_BODY_CHARS ? null : t.slice(0, MAX_BODY_CHARS);
+}
 
 async function extractBody(url: string): Promise<string | null> {
   if (NON_HTML.test(url)) return null;
   try {
     const res = await fetchT(url);
     if (!res.ok) return null;
+    if (IS_PDF.test(url) || (res.headers.get("content-type") ?? "").includes("pdf")) return await extractPdf(res);
     if (!(res.headers.get("content-type") ?? "").includes("html")) return null;
     const dom = new JSDOM(await res.text(), { url: res.url });
     const parsed = new Readability(dom.window.document).parse();
