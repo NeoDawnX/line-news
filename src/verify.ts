@@ -17,7 +17,8 @@ interface Selection {
 }
 
 // 単位付きの数値だけを対象にする。「3本」「1つ」のような文章上の数は見ない。
-const HARD_UNITS = "円|ドル|ユーロ|元|％|%|億|兆|万|千|人|件|社|台|店|戸|km|キロ|トン|倍|ポイント|pt|年度|年|か月|カ月|ヶ月|日|時間|分|秒|歳|回|位|割";
+// 年・日付は表記ゆれ（26年度／2026年3月期）が多く誤検出が目立つので対象外
+const HARD_UNITS = "円|ドル|ユーロ|元|％|%|億|兆|万|千|人|件|社|台|店|戸|km|キロ|トン|倍|ポイント|pt|か月|カ月|ヶ月|割";
 const NUM_RE = new RegExp(`[0-9０-９][0-9０-９,，.．]*(?:${HARD_UNITS})`, "g");
 
 const toHalf = (s: string) =>
@@ -83,9 +84,11 @@ async function main() {
   }
 
   // 出典リンクは選抜記事の URL のどれかでなければならない
-  const allowed = new Set([sel.macro, sel.business, sel.health, ...sel.deep].map((id) => byId.get(id)!.url));
+  // query（utm 等）は無視して比較
+  const canon = (u: string) => u.replace(/[?#].*$/, "").replace(/\/$/, "");
+  const allowed = new Set([sel.macro, sel.business, sel.health, ...sel.deep].map((id) => canon(byId.get(id)!.url)));
   const cited = [...md.matchAll(/^出典: (\S+)/gm)].map((m) => m[1]);
-  const badUrls = cited.filter((u) => !allowed.has(u));
+  const badUrls = cited.filter((u) => !allowed.has(canon(u)));
   if (badUrls.length) {
     bad += badUrls.length;
     say(`✗ 選抜記事にない出典URL: ${badUrls.join(", ")}`);

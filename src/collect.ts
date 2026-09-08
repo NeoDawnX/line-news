@@ -22,6 +22,17 @@ const parser = new Parser({ timeout: TIMEOUT_MS });
 const hashId = (url: string) =>
   createHash("sha1").update(url).digest("hex").slice(0, 12);
 
+/** RSS 由来の utm_* を落とす。出典リンクを綺麗にし、verify の URL 突合も安定する */
+function cleanUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    for (const k of [...u.searchParams.keys()]) if (/^utm_/.test(k)) u.searchParams.delete(k);
+    return u.toString().replace(/\?$/, "");
+  } catch {
+    return url;
+  }
+}
+
 /** タイトルからカテゴリを推定。どれにもマッチしなければ null */
 function classify(title: string): Category | null {
   for (const c of CLASSIFIERS) if (c.pattern.test(title)) return c.category;
@@ -81,6 +92,7 @@ async function collectOneRss(src: (typeof RSS_SOURCES)[number]): Promise<Article
   try {
     const feed = await parser.parseURL(src.url);
     const all = (feed.items ?? []).filter((it) => it.link);
+    for (const it of all) it.link = cleanUrl(it.link!);
     const kept = all.filter((it) => {
       const t = it.title ?? "";
       if (OFF_TOPIC.test(t)) return false;
