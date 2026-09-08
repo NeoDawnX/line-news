@@ -34,7 +34,7 @@ jobs:
         timeout-minutes: 5
 
       - name: collect
-        timeout-minutes: 12
+        timeout-minutes: 11
         run: npm run collect
 
       - name: generate

@@ -14,7 +14,7 @@ const OUT_PATH = "debug/articles.json";
 const MAX_BODY_CHARS = 12000;
 // これ未満は本文が取れていない（リードだけ、目次だけ）とみなす
 const MIN_BODY_CHARS = 600;
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 6000;
 
 const parser = new Parser({ timeout: TIMEOUT_MS });
 const hashId = (url: string) =>
@@ -63,68 +63,75 @@ async function extractBody(url: string): Promise<string | null> {
   }
 }
 
-async function collectRss(): Promise<Article[]> {
+async function collectOneRss(src: (typeof RSS_SOURCES)[number]): Promise<Article[]> {
   const out: Article[] = [];
-  for (const src of RSS_SOURCES) {
-    try {
-      const feed = await parser.parseURL(src.url);
-      const all = (feed.items ?? []).filter((it) => it.link);
-      const kept = all.filter((it) => {
-        const t = it.title ?? "";
-        if (OFF_TOPIC.test(t)) return false;
-        if (src.excludeTitle?.test(t)) return false;
-        if (src.strict && !classify(t)) return false;
-        return true;
+  const t0 = Date.now();
+  try {
+    const feed = await parser.parseURL(src.url);
+    const all = (feed.items ?? []).filter((it) => it.link);
+    const kept = all.filter((it) => {
+      const t = it.title ?? "";
+      if (OFF_TOPIC.test(t)) return false;
+      if (src.excludeTitle?.test(t)) return false;
+      if (src.strict && !classify(t)) return false;
+      return true;
+    });
+    const items = kept.slice(0, src.feedLimit ?? DEFAULT_FEED_LIMIT);
+    for (const it of items) {
+      const title = (it.title ?? "").trim();
+      out.push({
+        id: hashId(it.link!),
+        source: src.label,
+        headlineOnly: src.noBody || undefined,
+        category: classify(title) ?? src.category,
+        title,
+        url: it.link!,
+        publishedAt: it.isoDate ?? it.pubDate ?? null,
+        summary: (it.contentSnippet ?? "").trim().slice(0, 800),
+        body: null,
       });
-      const items = kept.slice(0, src.feedLimit ?? DEFAULT_FEED_LIMIT);
-      for (const it of items) {
-        const title = (it.title ?? "").trim();
-        out.push({
-          id: hashId(it.link!),
-          source: src.label,
-          headlineOnly: src.noBody || undefined,
-          category: classify(title) ?? src.category,
-          title,
-          url: it.link!,
-          publishedAt: it.isoDate ?? it.pubDate ?? null,
-          summary: (it.contentSnippet ?? "").trim().slice(0, 800),
-          body: null,
-        });
-      }
-      console.log(`[rss] ${src.label}: ${items.length}件（フィード${all.length}件, 除外${all.length - kept.length}件）`);
-    } catch (e) {
-      console.warn(`[rss] ${src.label}: 失敗 -`, (e as Error).message);
     }
+    console.log(`[rss] ${src.label}: ${items.length}件（フィード${all.length}件, 除外${all.length - kept.length}件, ${Date.now() - t0}ms）`);
+  } catch (e) {
+    console.warn(`[rss] ${src.label}: 失敗 (${Date.now() - t0}ms) -`, (e as Error).message);
   }
   return out;
 }
 
+async function collectRss(): Promise<Article[]> {
+  // ソース順は保つ（クォータは前から詰めるので、配列の順序が優先度になる）
+  return (await Promise.all(RSS_SOURCES.map(collectOneRss))).flat();
+}
+
 async function collectGoogleNews(): Promise<Article[]> {
-  const out: Article[] = [];
-  for (const { query, category } of GOOGLE_NEWS_QUERIES) {
-    try {
-      const feed = await parser.parseURL(googleNewsUrl(query));
-      const items = (feed.items ?? []).slice(0, 10);
-      for (const it of items) {
-        if (!it.link) continue;
-        out.push({
-          id: hashId(it.link),
-          source: "Google News",
-          headlineOnly: true,
-          category,
-          title: (it.title ?? "").trim(),
-          url: it.link,
-          publishedAt: it.isoDate ?? it.pubDate ?? null,
-          summary: (it.contentSnippet ?? "").trim().slice(0, 400),
-          body: null,
-        });
+  const results = await Promise.all(
+    GOOGLE_NEWS_QUERIES.map(async ({ query, category }) => {
+      const out: Article[] = [];
+      try {
+        const feed = await parser.parseURL(googleNewsUrl(query));
+        const items = (feed.items ?? []).slice(0, 10);
+        for (const it of items) {
+          if (!it.link) continue;
+          out.push({
+            id: hashId(it.link),
+            source: "Google News",
+            headlineOnly: true,
+            category,
+            title: (it.title ?? "").trim(),
+            url: it.link,
+            publishedAt: it.isoDate ?? it.pubDate ?? null,
+            summary: (it.contentSnippet ?? "").trim().slice(0, 400),
+            body: null,
+          });
+        }
+        console.log(`[gnews] ${query.slice(0, 16)}…: ${items.length}件`);
+      } catch (e) {
+        console.warn(`[gnews] ${query.slice(0, 16)}…: 失敗 -`, (e as Error).message);
       }
-      console.log(`[gnews] ${query.slice(0, 16)}…: ${items.length}件`);
-    } catch (e) {
-      console.warn(`[gnews] ${query.slice(0, 16)}…: 失敗 -`, (e as Error).message);
-    }
-  }
-  return out;
+      return out;
+    }),
+  );
+  return results.flat();
 }
 
 async function collectHN(): Promise<Article[]> {
@@ -184,13 +191,16 @@ function pickTargets(fresh: Article[]): Article[] {
 
 async function main() {
   setTimeout(() => {
-    console.error("collect: 12分を超えたので中断");
+    console.error("collect: 10分を超えたので中断");
     process.exit(2);
-  }, 12 * 60 * 1000).unref();
+  }, 10 * 60 * 1000).unref();
   await mkdir("debug", { recursive: true });
   const seen = await loadSeen();
 
-  const raw = [...(await collectRss()), ...(await collectGoogleNews()), ...(await collectHN())];
+  const t0 = Date.now();
+  const [rss, gnews, hn] = await Promise.all([collectRss(), collectGoogleNews(), collectHN()]);
+  const raw = [...rss, ...gnews, ...hn];
+  console.log(`収集: ${Date.now() - t0}ms`);
 
   const byId = new Map<string, Article>();
   for (const a of raw) {
@@ -203,7 +213,7 @@ async function main() {
   const targets = pickTargets(fresh);
 
   console.log(`本文抽出中… ${targets.length}件`);
-  const CONCURRENCY = 8;
+  const CONCURRENCY = 12;
   let ok = 0, done = 0;
   for (let i = 0; i < targets.length; i += CONCURRENCY) {
     const chunk = targets.slice(i, i + CONCURRENCY);
@@ -216,7 +226,7 @@ async function main() {
       }),
     );
   }
-  console.log(`本文抽出: ${ok}/${targets.length}`);
+  console.log(`本文抽出: ${ok}/${targets.length}（${Date.now() - t0}ms）`);
 
   // カテゴリ別の成功率。0が続くカテゴリはソースを足す必要がある。
   for (const c of Object.keys(CATEGORY_QUOTAS) as Category[]) {
@@ -236,7 +246,11 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main().then(
+  // JSDOM やソケットがイベントループを掴んで数分終了しないので明示的に抜ける
+  () => process.exit(0),
+  (e) => {
+    console.error(e);
+    process.exit(1);
+  },
+);

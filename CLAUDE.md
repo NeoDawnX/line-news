@@ -70,4 +70,4 @@ Actions: daily.yml が 06:40 JST に同じ手順を回し content/ docs/ seen.js
    - LINE_CHANNEL_ACCESS_TOKEN: .env と同じ値
 3. Actions で workflow_dispatch（skip_broadcast=true）を手動実行し、生成・verify・公開が通るか確認
 4. macro の本文ソース追加（日銀の PDF 会見要旨を読む、など）
-5. collect の並列化（現状 8 分）
+5. （完了）collect は約6秒。以前の8分は処理後にプロセスが終了しなかったため
